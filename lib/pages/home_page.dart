@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-// import 'package:wearher_app/consts.dart';
 import 'package:weather/weather.dart';
+import 'dart:async';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:weather_mini/consts.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -11,9 +13,11 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final WeatherFactory _wf = WeatherFactory("fcb48fae1fc464b54dc69f5d343b9f25");
-  Weather? _weather;
+  final WeatherFactory _wf = WeatherFactory(OPEN_WEATHER_API);
   final TextEditingController _controller = TextEditingController();
+
+  final StreamController<Weather?> _weatherController =
+      StreamController<Weather?>();
 
   @override
   void initState() {
@@ -21,12 +25,19 @@ class _HomePageState extends State<HomePage> {
     _getWeather("Gilgit");
   }
 
+  @override
+  void dispose() {
+    _weatherController.close();
+    super.dispose();
+  }
+
+  // Fetch weather and add it to the stream
   void _getWeather(String cityName) {
+    _weatherController.add(null); // Indicate loading state
     _wf.currentWeatherByCityName(cityName).then((w) {
-      setState(() {
-        _weather = w;
-      });
+      _weatherController.add(w);
     }).catchError((error) {
+      _weatherController.addError('Error fetching weather data');
       _showErrorDialog();
     });
   }
@@ -61,7 +72,10 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       body: _buildUI(),
       appBar: AppBar(
-        title: const Text('Weather App'),
+        title: const Text(
+          'Weather App',
+          style: TextStyle(color: Colors.white),
+        ),
         centerTitle: true,
         backgroundColor: Colors.deepPurpleAccent,
       ),
@@ -69,26 +83,41 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildUI() {
-    if (_weather == null) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
+    return StreamBuilder<Weather?>(
+      stream: _weatherController.stream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting ||
+            !snapshot.hasData) {
+          return const Center(
+            child: SpinKitFadingCircle(
+              color: Colors.deepPurpleAccent,
+              size: 50.0,
+            ),
+          );
+        } else if (snapshot.hasError) {
+          return const Center(
+            child: Text("Error loading weather data."),
+          );
+        }
 
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        _locationInputField(),
-        _locationHeader(),
-        const SizedBox(height: 20),
-        _dateTimeInfo(),
-        const SizedBox(height: 20),
-        _weatherIcon(),
-        const SizedBox(height: 20),
-        _currentTemp(),
-        const SizedBox(height: 20),
-        _extractInfo(),
-      ],
+        final Weather? weather = snapshot.data;
+
+        return ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            _locationInputField(),
+            _locationHeader(weather),
+            const SizedBox(height: 20),
+            _dateTimeInfo(weather),
+            const SizedBox(height: 20),
+            _weatherIcon(weather),
+            const SizedBox(height: 20),
+            _currentTemp(weather),
+            const SizedBox(height: 20),
+            _extractInfo(weather),
+          ],
+        );
+      },
     );
   }
 
@@ -96,26 +125,40 @@ class _HomePageState extends State<HomePage> {
     return TextField(
       controller: _controller,
       decoration: InputDecoration(
-        border: const OutlineInputBorder(),
+        border: const OutlineInputBorder(
+          borderRadius:
+              BorderRadius.all(Radius.circular(12.0)),
+        ),
         labelText: 'Enter City Name',
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.search),
-          onPressed: _searchWeather,
+        suffixIcon: Container(
+          decoration: BoxDecoration(
+            color: Colors.deepPurpleAccent,
+            borderRadius: const BorderRadius.only(
+              topRight: Radius.circular(
+                  10.0),
+              bottomRight: Radius.circular(
+                  10.0),
+            ),
+          ),
+          child: IconButton(
+            icon: const Icon(Icons.search, color: Colors.white), // Icon color
+            onPressed: _searchWeather,
+          ),
         ),
       ),
     );
   }
 
-  Widget _locationHeader() {
+  Widget _locationHeader(Weather? weather) {
     return Text(
-      _weather?.areaName ?? "",
+      weather?.areaName ?? "",
       style: const TextStyle(fontSize: 35, fontWeight: FontWeight.w500),
       textAlign: TextAlign.center,
     );
   }
 
-  Widget _dateTimeInfo() {
-    DateTime now = _weather!.date!;
+  Widget _dateTimeInfo(Weather? weather) {
+    DateTime now = weather!.date!;
     return Column(
       children: [
         Text(
@@ -141,7 +184,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _weatherIcon() {
+  Widget _weatherIcon(Weather? weather) {
     return Column(
       mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -152,22 +195,22 @@ class _HomePageState extends State<HomePage> {
           decoration: BoxDecoration(
             image: DecorationImage(
               image: NetworkImage(
-                  "https://openweathermap.org/img/wn/${_weather?.weatherIcon}@4x.png"),
+                  "https://openweathermap.org/img/wn/${weather?.weatherIcon}@4x.png"),
             ),
           ),
         ),
         Text(
-          _weather?.weatherDescription ?? "",
+          weather?.weatherDescription ?? "",
           style: const TextStyle(fontSize: 25),
         ),
       ],
     );
   }
 
-  Widget _currentTemp() {
+  Widget _currentTemp(Weather? weather) {
     return Center(
       child: Text(
-        "${_weather?.temperature?.celsius?.toStringAsFixed(0)}° C",
+        "${weather?.temperature?.celsius?.toStringAsFixed(0)}° C",
         style: const TextStyle(
           fontSize: 50,
           fontWeight: FontWeight.bold,
@@ -176,7 +219,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _extractInfo() {
+  Widget _extractInfo(Weather? weather) {
     return Container(
       width: MediaQuery.of(context).size.width * 0.80,
       height: MediaQuery.of(context).size.height * 0.15,
@@ -195,11 +238,11 @@ class _HomePageState extends State<HomePage> {
             mainAxisSize: MainAxisSize.max,
             children: [
               Text(
-                "Max: ${_weather?.tempMax?.celsius?.toStringAsFixed(0)} ° C",
+                "Max: ${weather?.tempMax?.celsius?.toStringAsFixed(0)} ° C",
                 style: const TextStyle(color: Colors.white, fontSize: 20),
               ),
               Text(
-                "Min: ${_weather?.tempMin?.celsius?.toStringAsFixed(0)} ° C",
+                "Min: ${weather?.tempMin?.celsius?.toStringAsFixed(0)} ° C",
                 style: const TextStyle(color: Colors.white, fontSize: 20),
               ),
             ],
@@ -210,11 +253,11 @@ class _HomePageState extends State<HomePage> {
             mainAxisSize: MainAxisSize.max,
             children: [
               Text(
-                "Wind: ${_weather?.windSpeed?.toStringAsFixed(0)} m/s",
+                "Wind: ${weather?.windSpeed?.toStringAsFixed(0)} m/s",
                 style: const TextStyle(color: Colors.white, fontSize: 20),
               ),
               Text(
-                "Humidity: ${_weather?.humidity?.toStringAsFixed(0)} %",
+                "Humidity: ${weather?.humidity?.toStringAsFixed(0)} %",
                 style: const TextStyle(color: Colors.white, fontSize: 20),
               ),
             ],
