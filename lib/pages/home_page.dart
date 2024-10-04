@@ -19,6 +19,8 @@ class _HomePageState extends State<HomePage> {
   final StreamController<Weather?> _weatherController =
       StreamController<Weather?>();
 
+  Weather? _previousWeather; // To store last successful weather data
+
   @override
   void initState() {
     super.initState();
@@ -35,10 +37,14 @@ class _HomePageState extends State<HomePage> {
   void _getWeather(String cityName) {
     _weatherController.add(null); // Indicate loading state
     _wf.currentWeatherByCityName(cityName).then((w) {
+      _previousWeather = w; // Store successful weather data
       _weatherController.add(w);
     }).catchError((error) {
       _weatherController.addError('Error fetching weather data');
       _showErrorDialog();
+      if (_previousWeather != null) {
+        _weatherController.add(_previousWeather); // Revert to previous weather
+      }
     });
   }
 
@@ -48,7 +54,7 @@ class _HomePageState extends State<HomePage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('Location Not Found'),
-          content: const Text('No such location found. Please try again.'),
+          content: const Text('No such location found.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -126,22 +132,19 @@ class _HomePageState extends State<HomePage> {
       controller: _controller,
       decoration: InputDecoration(
         border: const OutlineInputBorder(
-          borderRadius:
-              BorderRadius.all(Radius.circular(12.0)),
+          borderRadius: BorderRadius.all(Radius.circular(12.0)),
         ),
         labelText: 'Enter City Name',
         suffixIcon: Container(
           decoration: BoxDecoration(
             color: Colors.deepPurpleAccent,
             borderRadius: const BorderRadius.only(
-              topRight: Radius.circular(
-                  10.0),
-              bottomRight: Radius.circular(
-                  10.0),
+              topRight: Radius.circular(10.0),
+              bottomRight: Radius.circular(10.0),
             ),
           ),
           child: IconButton(
-            icon: const Icon(Icons.search, color: Colors.white), // Icon color
+            icon: const Icon(Icons.search, color: Colors.white),
             onPressed: _searchWeather,
           ),
         ),
